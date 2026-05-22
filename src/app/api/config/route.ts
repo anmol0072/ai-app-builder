@@ -11,16 +11,16 @@ const ConfigSchema = z.object({
       name: z.string(),
       type: z.enum(['string', 'number', 'boolean', 'date']),
       required: z.boolean().optional().default(false),
-    })),
-  })),
+    }).passthrough()),
+  }).passthrough()),
   ui: z.object({
     views: z.array(z.object({
       type: z.enum(['table', 'form', 'dashboard']),
       entity: z.string().optional(),
       title: z.string(),
-    })).optional().default([]),
-  }).optional().default({ views: [] }),
-});
+    }).passthrough()).optional().default([]),
+  }).passthrough().optional().default({ views: [] }),
+}).passthrough();
 
 export async function POST(req: Request) {
   try {
