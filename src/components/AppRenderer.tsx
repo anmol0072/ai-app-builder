@@ -1,9 +1,17 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, Component } from 'react';
 import Papa from 'papaparse';
 import { motion } from 'framer-motion';
-import { Upload, LogOut, Activity, Users, Database, DownloadCloud, Smartphone } from 'lucide-react';
+import { Upload, LogOut, Activity, Users, Database, DownloadCloud, Smartphone, Download, ChevronLeft, ChevronRight } from 'lucide-react';
+import toast, { Toaster } from 'react-hot-toast';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+
+class ErrorBoundary extends Component<any, { hasError: boolean, error: any }> {
+  constructor(props: any) { super(props); this.state = { hasError: false, error: null }; }
+  static getDerivedStateFromError(error: any) { return { hasError: true, error }; }
+  render() { if (this.state.hasError) return <div className="p-6 bg-rose-500/10 text-rose-400 rounded-xl border border-rose-500/20">Component Error: {this.state.error?.message}</div>; return this.props.children; }
+}
 import toast, { Toaster } from 'react-hot-toast';
 
 function AuthGuard({ children, token, setToken, appName }: any) {
@@ -74,39 +82,59 @@ function AuthGuard({ children, token, setToken, appName }: any) {
 
 function DynamicDashboard({ configName, entity, token }: any) {
   const [stats, setStats] = useState({ total: 0 });
+  const [data, setData] = useState<any[]>([]);
 
   useEffect(() => {
     if (token) {
-      fetch(`/api/dynamic/${configName}/${entity.name}`, { headers: { 'Authorization': `Bearer ${token}` } })
+      fetch(`/api/dynamic/${configName}/${entity.name}?limit=50`, { headers: { 'Authorization': `Bearer ${token}` } })
         .then(res => res.json())
-        .then(data => {
-          if (data.success) {
-            setStats({ total: data.data.length });
+        .then(res => {
+          if (res.success) {
+            setStats({ total: res.meta?.total || res.data.length });
+            setData(res.data.map((r: any) => r.data));
           }
         });
     }
   }, [configName, entity.name, token]);
 
+  const numericFields = entity.fields.filter((f: any) => f.type === 'number');
+  const chartField = numericFields.length > 0 ? numericFields[0].name : null;
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-      <div className="glass-card p-6 flex items-center justify-between">
-        <div>
-          <p className="text-gray-400 text-sm font-medium mb-1">Total {entity.name}s</p>
-          <h3 className="text-3xl font-bold text-white">{stats.total}</h3>
+    <div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="glass-card p-6 flex items-center justify-between">
+          <div>
+            <p className="text-gray-400 text-sm font-medium mb-1">Total {entity.name}s</p>
+            <h3 className="text-3xl font-bold text-white">{stats.total}</h3>
+          </div>
+          <div className="w-12 h-12 rounded-full bg-indigo-500/20 flex items-center justify-center">
+            <Users className="w-6 h-6 text-indigo-400" />
+          </div>
         </div>
-        <div className="w-12 h-12 rounded-full bg-indigo-500/20 flex items-center justify-center">
-          <Users className="w-6 h-6 text-indigo-400" />
+        <div className="glass-card p-6 flex items-center justify-between">
+          <div>
+            <p className="text-gray-400 text-sm font-medium mb-1">System Health</p>
+            <h3 className="text-3xl font-bold text-emerald-400">100%</h3>
+          </div>
+          <div className="w-12 h-12 rounded-full bg-emerald-500/20 flex items-center justify-center">
+            <Activity className="w-6 h-6 text-emerald-400" />
+          </div>
         </div>
       </div>
-      <div className="glass-card p-6 flex items-center justify-between">
-        <div>
-          <p className="text-gray-400 text-sm font-medium mb-1">System Health</p>
-          <h3 className="text-3xl font-bold text-emerald-400">100%</h3>
+      {chartField && data.length > 0 && (
+        <div className="glass-card p-6 h-80 mt-6">
+          <h3 className="text-lg font-semibold text-white mb-4 capitalize">{chartField} Analytics</h3>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={data}>
+              <XAxis dataKey={entity.fields[0].name} stroke="#ffffff40" fontSize={12} tickLine={false} axisLine={false} />
+              <YAxis stroke="#ffffff40" fontSize={12} tickLine={false} axisLine={false} />
+              <Tooltip cursor={{fill: '#ffffff10'}} contentStyle={{backgroundColor: '#1e1e24', borderColor: '#ffffff20', borderRadius: '8px', color: '#fff'}} />
+              <Bar dataKey={chartField} fill="#818cf8" radius={[4,4,0,0]} />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
-        <div className="w-12 h-12 rounded-full bg-emerald-500/20 flex items-center justify-center">
-          <Activity className="w-6 h-6 text-emerald-400" />
-        </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -168,19 +196,38 @@ function DynamicTable({ configName, entity, token, refreshTrigger }: any) {
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [meta, setMeta] = useState({ total: 0, totalPages: 1 });
 
   const fetchRecords = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/dynamic/${configName}/${entity.name}`, { headers: { 'Authorization': `Bearer ${token}` } });
+      const res = await fetch(`/api/dynamic/${configName}/${entity.name}?page=${page}&limit=10&search=${encodeURIComponent(searchQuery)}`, { headers: { 'Authorization': `Bearer ${token}` } });
       const data = await res.json();
-      if (data.success) setRecords(data.data);
+      if (data.success) {
+        setRecords(data.data);
+        if (data.meta) setMeta(data.meta);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { if (token) fetchRecords(); }, [configName, entity.name, token, refreshTrigger]);
+  useEffect(() => { 
+    const timer = setTimeout(() => { if (token) fetchRecords(); }, 300);
+    return () => clearTimeout(timer);
+  }, [configName, entity.name, token, refreshTrigger, page, searchQuery]);
+
+  const handleCsvExport = () => {
+    if (records.length === 0) return toast('No records to export');
+    const csv = Papa.unparse(records.map(r => r.data));
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${entity.name}-export.csv`;
+    a.click();
+  };
 
   const handleCsvUpload = (e: any) => {
     const file = e.target.files[0];
@@ -218,12 +265,6 @@ function DynamicTable({ configName, entity, token, refreshTrigger }: any) {
     });
   };
 
-  const filteredRecords = records.filter(r => 
-    Object.values(r.data).some(val => 
-      String(val).toLowerCase().includes(searchQuery.toLowerCase())
-    )
-  );
-
   return (
     <div className="glass-card overflow-hidden">
       <div className="p-4 border-b border-white/5 flex flex-col sm:flex-row gap-4 justify-between items-center bg-white/5">
@@ -231,11 +272,14 @@ function DynamicTable({ configName, entity, token, refreshTrigger }: any) {
         <div className="flex w-full sm:w-auto items-center gap-3">
           <input 
             type="text" 
-            placeholder="Search records..." 
+            placeholder="Search server..." 
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
             className="w-full sm:w-64 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-indigo-500 transition-colors"
           />
+          <button onClick={handleCsvExport} className="bg-white/5 hover:bg-white/10 text-white p-2 rounded-lg transition" title="Export Page CSV">
+            <Download className="w-4 h-4" />
+          </button>
           <label className="flex whitespace-nowrap items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm py-2 px-4 rounded-lg cursor-pointer transition">
             <Upload className="w-4 h-4" /> Import CSV
             <input type="file" accept=".csv" className="hidden" onChange={handleCsvUpload} />
@@ -243,7 +287,11 @@ function DynamicTable({ configName, entity, token, refreshTrigger }: any) {
         </div>
       </div>
       <div className="overflow-x-auto">
-        {loading ? <div className="p-8 text-center text-gray-400 animate-pulse">Loading data...</div> : (
+        {loading ? (
+          <div className="p-4 space-y-4">
+            {Array(5).fill(0).map((_, i) => <div key={i} className="h-10 w-full bg-white/5 animate-pulse rounded-lg"></div>)}
+          </div>
+        ) : (
           <table className="w-full text-left">
             <thead>
               <tr className="bg-white/5 border-b border-white/5">
@@ -253,9 +301,9 @@ function DynamicTable({ configName, entity, token, refreshTrigger }: any) {
               </tr>
             </thead>
             <tbody>
-              {filteredRecords.length === 0 ? (
+              {records.length === 0 ? (
                 <tr><td colSpan={entity.fields.length} className="p-8 text-center text-gray-500">No records found.</td></tr>
-              ) : filteredRecords.map((r) => (
+              ) : records.map((r) => (
                 <tr key={r.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
                   {entity.fields.map((f: any) => (
                     <td key={f.name} className="p-4 text-gray-300 text-sm">{r.data[f.name]?.toString() || '-'}</td>
@@ -265,6 +313,14 @@ function DynamicTable({ configName, entity, token, refreshTrigger }: any) {
             </tbody>
           </table>
         )}
+      </div>
+      <div className="p-4 border-t border-white/5 bg-white/5 flex items-center justify-between text-sm text-gray-400">
+        <span>Showing {records.length} records. Total: {meta.total}</span>
+        <div className="flex gap-2">
+          <button disabled={page === 1} onClick={() => setPage(p => p - 1)} className="p-1 rounded hover:bg-white/10 disabled:opacity-50"><ChevronLeft className="w-5 h-5"/></button>
+          <span className="py-1 px-2">{page} / {meta.totalPages || 1}</span>
+          <button disabled={page >= (meta.totalPages || 1)} onClick={() => setPage(p => p + 1)} className="p-1 rounded hover:bg-white/10 disabled:opacity-50"><ChevronRight className="w-5 h-5"/></button>
+        </div>
       </div>
     </div>
   );
@@ -375,9 +431,11 @@ export default function AppRenderer({ config }: { config: any }) {
             return (
               <motion.section initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.1 }} key={idx}>
                 <h2 className="text-xl font-display font-semibold text-white mb-6">{viewTitle}</h2>
-                {view.type === 'dashboard' && <DynamicDashboard configName={name} entity={entityDef} token={token} />}
-                {view.type === 'form' && <DynamicForm configName={name} entity={entityDef} schema={entityDef} token={token} onSuccess={() => setRefreshHash(h => h + 1)} />}
-                {view.type === 'table' && <DynamicTable configName={name} entity={entityDef} token={token} refreshTrigger={refreshHash} />}
+                <ErrorBoundary>
+                  {view.type === 'dashboard' && <DynamicDashboard configName={name} entity={entityDef} token={token} />}
+                  {view.type === 'form' && <DynamicForm configName={name} entity={entityDef} schema={entityDef} token={token} onSuccess={() => setRefreshHash(h => h + 1)} />}
+                  {view.type === 'table' && <DynamicTable configName={name} entity={entityDef} token={token} refreshTrigger={refreshHash} />}
+                </ErrorBoundary>
               </motion.section>
             );
           })}

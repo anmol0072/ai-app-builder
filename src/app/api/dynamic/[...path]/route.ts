@@ -45,15 +45,37 @@ export async function GET(request: Request, { params }: { params: Promise<{ path
       }
       return NextResponse.json({ success: true, data: record });
     } else {
-      const records = await prisma.dynamicRecord.findMany({
+      const { searchParams } = new URL(request.url);
+      const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
+      const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '10')));
+      const search = searchParams.get('search') || '';
+
+      let records = await prisma.dynamicRecord.findMany({
         where: {
           configurationId: config.id,
-          ...(userId ? { userId } : {}), // If authenticated, only show their records
+          ...(userId ? { userId } : {}),
           data: { path: ['_entity'], equals: entityName }
         },
         orderBy: { createdAt: 'desc' }
       });
-      return NextResponse.json({ success: true, data: records });
+
+      if (search) {
+        const lowerSearch = search.toLowerCase();
+        records = records.filter(r => 
+          Object.values(r.data as object).some(val => 
+            String(val).toLowerCase().includes(lowerSearch)
+          )
+        );
+      }
+
+      const total = records.length;
+      const paginatedRecords = records.slice((page - 1) * limit, page * limit);
+
+      return NextResponse.json({ 
+        success: true, 
+        data: paginatedRecords,
+        meta: { total, page, limit, totalPages: Math.ceil(total / limit) }
+      });
     }
   } catch (error) {
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
