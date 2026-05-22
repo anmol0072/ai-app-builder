@@ -12,7 +12,6 @@ class ErrorBoundary extends Component<any, { hasError: boolean, error: any }> {
   static getDerivedStateFromError(error: any) { return { hasError: true, error }; }
   render() { if (this.state.hasError) return <div className="p-6 bg-rose-500/10 text-rose-400 rounded-xl border border-rose-500/20">Component Error: {this.state.error?.message}</div>; return this.props.children; }
 }
-import toast, { Toaster } from 'react-hot-toast';
 
 function AuthGuard({ children, token, setToken, appName }: any) {
   const [email, setEmail] = useState('');
