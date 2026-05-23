@@ -35,9 +35,9 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ success: true, data: config }, { status: 201 });
-  } catch (error) {
+  } catch (error: any) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ success: false, errors: error.errors }, { status: 400 });
+      return NextResponse.json({ success: false, errors: (error as any).errors }, { status: 400 });
     }
     console.error('Config API Error:', error);
     return NextResponse.json({ success: false, error: 'Internal Server Error' }, { status: 500 });

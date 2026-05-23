@@ -111,14 +111,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ pat
 
       if (validRecords.length > 0) {
         await prisma.dynamicRecord.createMany({
-          data: validRecords.map(data => ({ configurationId: config.id, userId, data }))
+          data: validRecords.map(data => ({ configurationId: config.id, userId, data: data as any }))
         });
       }
       return NextResponse.json({ success: true, imported: validRecords.length, errors }, { status: 201 });
     }
 
     const body = await request.json();
-    let validatedData;
+    let validatedData: any;
     try {
       validatedData = validateData(config.schema, entityName, body);
     } catch (e: any) {
@@ -127,7 +127,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ pat
 
     validatedData._entity = entityName;
     const record = await prisma.dynamicRecord.create({
-      data: { configurationId: config.id, userId, data: validatedData }
+      data: { configurationId: config.id, userId, data: validatedData as any }
     });
 
     return NextResponse.json({ success: true, data: record }, { status: 201 });
@@ -151,12 +151,12 @@ export async function PUT(request: Request, { params }: { params: Promise<{ path
     if (existing?.userId !== userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
 
     const body = await request.json();
-    const validatedData = validateData(config.schema, entityName, body);
+    const validatedData: any = validateData(config.schema, entityName, body);
     validatedData._entity = entityName;
 
     const record = await prisma.dynamicRecord.update({
       where: { id: recordId },
-      data: { data: validatedData }
+      data: { data: validatedData as any }
     });
 
     return NextResponse.json({ success: true, data: record });
